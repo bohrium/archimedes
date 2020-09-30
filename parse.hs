@@ -122,15 +122,14 @@ theta_derivative_name n = if n==0 then "theta"
 lotsa_ds :: [String] -> String 
 lotsa_ds nms = intercalate " " $ map (\nm->"D_"++nm) nms
 
-wrap_if_has_sum :: [ETree] -> String -> String
-wrap_if_has_sum es s = if or (map (\e -> case e of Sum _ -> True
-                                                   _ -> False) es) then "("++s++")" 
-                       else s
+wrap_if_is_sum :: ETree -> String
+wrap_if_is_sum e = case e of Sum _ -> "("++(showtree e)++")"
+                             _     -> showtree e
 
 showtree :: ETree -> String
 showtree et = 
     case et of Sum es        -> intercalate " + " $ map showtree es
-               Product es    -> wrap_if_has_sum es $ intercalate "*" (map showtree es)
+               Product es    -> intercalate "*" (map wrap_if_is_sum es)
                Num q         -> show q
                Var nm        -> nm
                Theta n e     -> (theta_derivative_name n) ++ "("++(showtree e)++")" 
@@ -197,18 +196,35 @@ match_num :: Double -> Bool -> ETree -> Bool
 match_num x b e = case e of Num y -> if y==x then b else not b
                             _     -> not b 
 
+distr :: ETree -> ETree
+distr et = case et of Product (h:t) -> case distr h of
+                                            Sum terms -> Sum (map (\e -> distr (Product (e:t))) terms) 
+                                            hh        -> case distr $ Product t of
+                                                              Sum terms -> Sum (map (\e -> distr $ Product [hh,e]) terms) 
+                                                              tt -> Product [hh,tt] 
+                      Sum es     -> Sum (map distr es)
+                      _          -> et
+
 simp :: ETree -> ETree
 simp et = case et of Sum es        -> let terms = map simp es
                                           nonzero = filter (match_num 0.0 False) terms in
-                                          if null nonzero then Num 0.0 else Sum nonzero
+                                          case nonzero of
+                                              [] -> Num 0.0
+                                              [e] -> e
+                                              _ -> Sum nonzero
                      Product es    -> let facts = map simp es
                                           haszero = or $ map (match_num 0.0 True) facts 
                                           nonone = filter (match_num 1.0 False) facts in
                                           if haszero then Num 0.0
-                                          else if null nonone then Num 1.0
-                                          else Product nonone
+                                          else case nonone of
+                                                    [] -> Num 1.0
+                                                    [e] -> e
+                                                    _ -> Product nonone
                      Theta n e     -> Theta n (simp e) 
                      _             -> et
+
+diff_and_simp :: String -> ETree -> ETree
+diff_and_simp nm et = simp $ distr $ simp $ diff nm et
 
 -- ============================================================================
 -- ===  4. MAIN LOOP  =========================================================
@@ -216,7 +232,7 @@ simp et = case et of Sum es        -> let terms = map simp es
 
 try_parse s = case parse expr s of
                    Nothing -> "Failed to Parse" 
-                   Just (a, out) -> showtree $ simp (diff "t" (simp (diff "x" a)))
+                   Just (a, out) -> showtree $ (diff_and_simp "x") $ (diff_and_simp "t") $ a
 
 main = do putStr "hello!\n\n"
           contents <- readFile "moo.txt" 
