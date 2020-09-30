@@ -193,18 +193,20 @@ diff wrt et = case et of Sum es        -> Sum (map (diff wrt) es)
                          Theta n e     -> Product [Theta (n+1) e, diff wrt e]
                          Smooth nms nm -> Smooth (wrt:nms) nm
 
+match_num :: Double -> Bool -> ETree -> Bool
+match_num x b e = case e of Num y -> if y==x then b else not b
+                            _     -> not b 
+
 simp :: ETree -> ETree
 simp et = case et of Sum es        -> let terms = map simp es
-                                          nonzero = filter (\c -> case c of Num 0.0 -> False
-                                                                            _ -> True) terms in
+                                          nonzero = filter (match_num 0.0 False) terms in
                                           if null nonzero then Num 0.0 else Sum nonzero
                      Product es    -> let facts = map simp es
-                                          haszero = or (map (\c -> case c of Num 0.0 -> True
-                                                                             _ -> False) facts) 
-                                          nonone = filter (\c -> case c of Num 1.0 -> False
-                                                                           _ -> True) facts in
-                                          if haszero then Num 0.0 else
-                                              if null nonone then Num 1.0 else Product nonone
+                                          haszero = or $ map (match_num 0.0 True) facts 
+                                          nonone = filter (match_num 1.0 False) facts in
+                                          if haszero then Num 0.0
+                                          else if null nonone then Num 1.0
+                                          else Product nonone
                      Theta n e     -> Theta n (simp e) 
                      _             -> et
 
@@ -214,7 +216,7 @@ simp et = case et of Sum es        -> let terms = map simp es
 
 try_parse s = case parse expr s of
                    Nothing -> "Failed to Parse" 
-                   Just (a, out) -> showtree (simp (diff "x" a))
+                   Just (a, out) -> showtree $ simp (diff "t" (simp (diff "x" a)))
 
 main = do putStr "hello!\n\n"
           contents <- readFile "moo.txt" 
