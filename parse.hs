@@ -123,14 +123,15 @@ theta_derivative_name n = if n==0 then "\\theta"
 lotsa_ds :: [String] -> String 
 lotsa_ds nms = intercalate " " $ map (\nm->"D_"++nm) nms
 
-wrap_if_is_sum :: ETree -> String
-wrap_if_is_sum e = case e of Sum _ -> "("++(showtree e)++")"
-                             _     -> showtree e
+wrap_if_is_sum_or_neg :: ETree -> String
+wrap_if_is_sum_or_neg e = case e of Sum _ -> "("++(showtree e)++")"
+                                    Num q -> if q<0.0 then "("++(showtree e)++")" else showtree e
+                                    _     -> showtree e
 
 showtree :: ETree -> String
 showtree et = 
     case et of Sum es        -> intercalate " + " $ map showtree es
-               Prod es    -> intercalate "*" (map wrap_if_is_sum es)
+               Prod es       -> intercalate "" (map wrap_if_is_sum_or_neg es)
                Num q         -> show q
                Var nm        -> nm
                Theta n e     -> (theta_derivative_name n) ++ "("++(showtree e)++")" 
@@ -160,7 +161,7 @@ term = do a <- fact
           (do op <- spop "*"
               b <- term
               return (case b of Prod es -> Prod (a:es)  
-                                _          -> Prod [a, b])
+                                _       -> Prod [a, b])
               ) +++ return a
 
 fact = do num +++ var +++ theta +++ smooth  
@@ -303,6 +304,7 @@ normalize a et =
                    Prod es -> Prod (map (normalize a) es) 
                    Var "x"    -> xx
                    Var "y"    -> yy
+                   Theta 1 e  -> Theta 1 (Var "k") -- hacky
                    Theta n e  -> Theta n $ normalize a e
                    _          -> et
 
@@ -321,7 +323,7 @@ integrate_term ets =
                                         "\\int_{j,k}\\," ++ (showtree $ canc $ asso $ canc $ normalize a et)
 
 integrate et = case et of
-    Sum es  -> intercalate " + " $ map integrate es  
+    Sum es  -> intercalate " \n + " $ map integrate es  
     Prod es -> integrate_term es
     _       -> "\\int... " ++ (showtree et)
  
